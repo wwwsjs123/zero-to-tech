@@ -1,21 +1,44 @@
-# dependencies
+# ===== 依赖 =====
 node_modules/
 
-# next.js
+# ===== Next.js 构建产物 =====
 .next/
 out/
-
-# production
 build/
 dist/
 
-# editor
-.vscode/*
-!.vscode/extensions.json
-.DS_Store
-*.local
-*.log
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
 
-# env
+# ===== 本地数据库 / 测试数据（访客数据不要提交） =====
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+test.db
+
+# ===== 环境变量 =====
 .env
 .env.*
+!.env.example
+
+# ===== 编辑器 / 系统 =====
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# ===== 日志 / 本地临时文件 =====
+*.log
+npm-debug.log*
+yarn-error.log*
+*.local
+backend/handmode.py
