@@ -3,33 +3,33 @@ from pydantic import BaseModel   ####进行解析和校验
 from fastapi.middleware.cors import CORSMiddleware
 from pypinyin import lazy_pinyin, Style
 from snownlp import SnowNLP
-import json
+from storage import  init_db,save_record,get_history
 from datetime import datetime, timezone
-
-HISTORY_FILE = "history.json"
-
-def load_history():
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-
-def save_record(record):
-    records = load_history()
-    records.append(record)
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
+import uuid
+from fastapi import Request, Response
 
 
+init_db()
 
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
      allow_methods=["GET", "POST"],
+     allow_credentials=True,  ###后端允许跨源的前端带cookie过来了
 )
 
+
+def get_session_id(request: Request, response: Response) -> str:
+    sid = request.cookies.get("session_id")      # 先看有没有纸条
+    if not sid:                                  # 第一次来，没有——发一张
+        sid = uuid.uuid4().hex                    # 一串随机、不重复的 id
+        response.set_cookie(
+            "session_id", sid,
+            httponly=True, samesite="lax",
+            max_age=60 * 60 * 24 * 30,            # 记 30 天
+        )
+    return sid
 
 profile = home = {
   "heroTitle": "关于我(来自后端)",
@@ -57,12 +57,13 @@ def score_label(score):
     if score >= 0.6:
         return "偏积极"
     elif score <= 0.4:
-        return "偏消极"
+        return "偏消极"   
     else:
         return "中性"
 
 @app.post("/api/analyze")
-def analyze(req: AnalyzeRequest):
+def analyze(req: AnalyzeRequest, request: Request, response: Response):
+    sid = get_session_id(request, response)
     text = req.text
     score = round(SnowNLP(text).sentiments, 2)
     result = {
@@ -70,14 +71,13 @@ def analyze(req: AnalyzeRequest):
         "score": score,
         "label": score_label(score),
         "pinyin": " ".join(lazy_pinyin(text, style=Style.TONE)),
-        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),  # ← 新增
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    save_record(result)                                                          # ← 存档到文件   加字段是可以的，删字段是不行的
-    return result
+    save_record(sid, result)          # 存的时候盖上这个会话的记号
+    return result                     # ← 返回体一个字没变，session_id 只走 cookie
 
 @app.get("/api/history")
-def history():
-    records = load_history()   # 读出文件里的全部记录
-    return records
-
+def history(request: Request, response: Response, limit: int = 10):
+    sid = get_session_id(request, response)
+    return get_history(sid, limit)    # 只回这个会话自己的
 

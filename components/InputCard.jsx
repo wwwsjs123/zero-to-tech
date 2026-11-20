@@ -18,6 +18,7 @@ export default function InputCard({ onResult }) {
       const res = await fetch(`${API}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },   //#endregion 这个请求不简单需要进行预检
+        credentials: "include", 
         body: JSON.stringify({ text }),
       });
 
