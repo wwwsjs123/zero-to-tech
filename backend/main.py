@@ -1,28 +1,83 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from fastapi import FastAPI
+from pydantic import BaseModel   ####进行解析和校验
+from fastapi.middleware.cors import CORSMiddleware
+from pypinyin import lazy_pinyin, Style
+from snownlp import SnowNLP
 import json
+from datetime import datetime, timezone
 
-profile = {
-    "heroTitle": "关于我",
-    "heroSubtitle": "项目，创意，灵感，心得，我的作品",
-}
+HISTORY_FILE = "history.json"
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/api/profile":  #路径
-            self.send_response(200)    ######状态码
-            self.send_header("Content-Type", "application/json")  ####响应头 什么格式
-            self.end_headers()   ####空行
-            body = json.dumps(profile, ensure_ascii=False)  # ensure_ascii=False：让中文原样输出   响应体
-            self.wfile.write(body.encode("utf-8"))
-        elif self.path == "/hello":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")   # ← 一会儿改成 text/plain 再试
-            self.end_headers()
-            self.wfile.write("<h1>你好，HTTP</h1>".encode("utf-8"))
+def load_history():
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
 
-        else:
-            self.send_response(404)
-            self.end_headers()
+def save_record(record):
+    records = load_history()
+    records.append(record)
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
 
-print("后端已启动：http://localhost:8000/api/profile")
-HTTPServer(("", 8000), Handler).serve_forever()
+
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+     allow_methods=["GET", "POST"],
+)
+
+
+profile = home = {
+  "heroTitle": "关于我(来自后端)",
+  "heroSubtitle": "项目，创意，灵感，心得，我的作品",
+ "featuredWork": {
+    "kicker": "作品",
+    "title": "文字实验室",
+    "copy": "拼音和情绪，挖掘中文里的细节",
+    "linkLabel": "打开作品",
+  },
+  "identity": {
+    "motto": "已识乾坤大，尤怜草木青",
+    "learning": "零到全栈",
+  },
+};
+
+class AnalyzeRequest(BaseModel):
+    text: str
+
+@app.get("/api/profile")  ###往这个路径发的get请求交给下面这个函数处理
+def get_profile():
+    return profile
+
+def score_label(score):
+    if score >= 0.6:
+        return "偏积极"
+    elif score <= 0.4:
+        return "偏消极"
+    else:
+        return "中性"
+
+@app.post("/api/analyze")
+def analyze(req: AnalyzeRequest):
+    text = req.text
+    score = round(SnowNLP(text).sentiments, 2)
+    result = {
+        "text": text,
+        "score": score,
+        "label": score_label(score),
+        "pinyin": " ".join(lazy_pinyin(text, style=Style.TONE)),
+        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),  # ← 新增
+    }
+    save_record(result)                                                          # ← 存档到文件   加字段是可以的，删字段是不行的
+    return result
+
+@app.get("/api/history")
+def history():
+    records = load_history()   # 读出文件里的全部记录
+    return records
+
+
